@@ -39,7 +39,7 @@ A comprehensive web application connecting survivors of conflicts (especially th
 
 - **Frontend**: JSP, HTML, CSS, Bootstrap 5
 - **Backend**: Java Servlets (Advanced Java)
-- **Database**: MySQL 8.0+ with JDBC
+- **Database**: PostgreSQL 12+ with JDBC
 - **Email**: JavaMail API
 - **Server**: Apache Tomcat 9.0+
 - **Build Tool**: Maven
@@ -49,7 +49,7 @@ A comprehensive web application connecting survivors of conflicts (especially th
 
 - Java JDK 8 or higher
 - Apache Maven 3.6+
-- MySQL 8.0+
+- PostgreSQL 12+
 - Apache Tomcat 9.0+
 - SMTP server for email (Gmail, etc.)
 
@@ -57,24 +57,45 @@ A comprehensive web application connecting survivors of conflicts (especially th
 
 ### 1. Database Setup
 
-```sql
--- Run the schema.sql file to create the database
-mysql -u root -p < database/schema.sql
+**Using psql command line:**
+```bash
+# Create database
+createdb humanitarian_support
+
+# Connect and run schema
+psql -d humanitarian_support -f database/schema.sql
 ```
 
-Or manually:
-1. Create a MySQL database named `humanitarian_support`
-2. Import the schema from `database/schema.sql`
+**Or manually using psql:**
+```sql
+-- Connect to PostgreSQL
+psql -U postgres
+
+-- Create database
+CREATE DATABASE humanitarian_support;
+
+-- Connect to the database
+\c humanitarian_support
+
+-- Run the schema file
+\i database/schema.sql
+```
+
+**Or using pgAdmin:**
+1. Create a new database named `humanitarian_support`
+2. Open Query Tool and execute the contents of `database/schema.sql`
 3. Update database credentials in `src/main/java/com/humanitarian/util/DBConnection.java`
 
 ### 2. Configure Database Connection
 
 Edit `src/main/java/com/humanitarian/util/DBConnection.java`:
 ```java
-private static final String DB_URL = "jdbc:mysql://localhost:3306/humanitarian_support?useSSL=false&serverTimezone=UTC&allowPublicKeyRetrieval=true";
-private static final String DB_USER = "root";
+private static final String DB_URL = "jdbc:postgresql://localhost:5432/humanitarian_support";
+private static final String DB_USER = "postgres";
 private static final String DB_PASSWORD = "your_password";
 ```
+
+**Note**: Update the connection URL, username, and password according to your PostgreSQL setup.
 
 ### 3. Configure Email Service
 
@@ -195,9 +216,11 @@ Language preference can be set during registration.
 ## Troubleshooting
 
 ### Database Connection Issues
-- Verify MySQL is running
+- Verify PostgreSQL is running: `pg_isready` or `systemctl status postgresql`
 - Check database credentials
-- Ensure MySQL connector JAR is in classpath
+- Ensure PostgreSQL JDBC driver is in classpath (included in pom.xml)
+- Verify database exists: `psql -l` to list databases
+- Check PostgreSQL is listening on port 5432: `netstat -an | grep 5432`
 
 ### Email Not Sending
 - Verify SMTP credentials
