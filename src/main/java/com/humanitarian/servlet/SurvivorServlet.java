@@ -1,21 +1,37 @@
 package com.humanitarian.servlet;
 
-import com.humanitarian.dao.*;
-import com.humanitarian.model.*;
-import com.humanitarian.util.EmailService;
-import org.apache.commons.fileupload.FileItem;
-import org.apache.commons.fileupload.disk.DiskFileItemFactory;
-import org.apache.commons.fileupload.servlet.ServletFileUpload;
-
-import jakarta.servlet.ServletException;
-import jakarta.servlet.annotation.WebServlet;
-import jakarta.servlet.http.*;
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.util.Collection;
 import java.util.List;
 
+import com.humanitarian.dao.DocumentDAO;
+import com.humanitarian.dao.HelpRequestDAO;
+import com.humanitarian.dao.NotificationDAO;
+import com.humanitarian.model.Document;
+import com.humanitarian.model.HelpRequest;
+import com.humanitarian.model.Notification;
+import com.humanitarian.model.User;
+
+import jakarta.servlet.ServletException;
+import jakarta.servlet.annotation.MultipartConfig;
+import jakarta.servlet.annotation.WebServlet;
+import jakarta.servlet.http.HttpServlet;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpSession;
+import jakarta.servlet.http.Part;
+
 @WebServlet("/survivor/*")
+@MultipartConfig(
+    maxFileSize = 10485760, // 10MB
+    maxRequestSize = 10485760,
+    fileSizeThreshold = 1024
+)
 public class SurvivorServlet extends HttpServlet {
     private HelpRequestDAO helpRequestDAO = new HelpRequestDAO();
     private DocumentDAO documentDAO = new DocumentDAO();
@@ -201,30 +217,34 @@ public class SurvivorServlet extends HttpServlet {
                 uploadDir.mkdirs();
             }
             
-            // Process file upload
-            if (ServletFileUpload.isMultipartContent(request)) {
-                DiskFileItemFactory factory = new DiskFileItemFactory();
-                factory.setRepository(new File(System.getProperty("java.io.tmpdir")));
-                ServletFileUpload upload = new ServletFileUpload(factory);
-                
-                List<FileItem> formItems = upload.parseRequest(request);
-                
-                for (FileItem item : formItems) {
-                    if (!item.isFormField()) {
-                        String fileName = new File(item.getName()).getName();
-                        String documentType = request.getParameter("documentType");
+            // Get document type from form parameter
+            String documentType = request.getParameter("documentType");
+            
+            // Process file upload using Jakarta Part API
+            Collection<Part> parts = request.getParts();
+            for (Part part : parts) {
+                if (part.getName().equals("document") && part.getSize() > 0) {
+                    String fileName = getFileName(part);
+                    if (fileName != null && !fileName.isEmpty()) {
+                        // Sanitize filename
+                        String sanitizedFileName = System.currentTimeMillis() + "_" + 
+                            fileName.replaceAll("[^a-zA-Z0-9._-]", "_");
                         
-                        String filePath = uploadPath + File.separator + System.currentTimeMillis() + "_" + fileName;
+                        String filePath = uploadPath + File.separator + sanitizedFileName;
                         File storeFile = new File(filePath);
-                        item.write(storeFile);
+                        
+                        // Save the file
+                        try (InputStream inputStream = part.getInputStream()) {
+                            Files.copy(inputStream, storeFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                        }
                         
                         Document document = new Document();
                         document.setRequestId(requestId);
                         document.setDocumentType(documentType != null ? documentType : "other");
                         document.setFileName(fileName);
                         document.setFilePath(filePath);
-                        document.setFileSize(item.getSize());
-                        document.setMimeType(item.getContentType());
+                        document.setFileSize(part.getSize());
+                        document.setMimeType(part.getContentType());
                         
                         if (documentDAO.saveDocument(document)) {
                             // Notify admin
@@ -242,8 +262,27 @@ public class SurvivorServlet extends HttpServlet {
             response.sendRedirect(request.getContextPath() + "/survivor/view-request?id=" + requestId);
         } catch (Exception e) {
             System.err.println("Error uploading document: " + e.getMessage());
+            e.printStackTrace();
             response.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
         }
+    }
+    
+    /**
+     * Extract filename from Part header
+     */
+    private String getFileName(Part part) {
+        String contentDisposition = part.getHeader("content-disposition");
+        if (contentDisposition != null) {
+            String[] tokens = contentDisposition.split(";");
+            for (String token : tokens) {
+                if (token.trim().startsWith("filename")) {
+                    String fileName = token.substring(token.indexOf("=") + 2, token.length() - 1);
+                    // Extract just the filename, not the full path
+                    return fileName.substring(fileName.lastIndexOf(File.separator) + 1);
+                }
+            }
+        }
+        return null;
     }
 }
 
